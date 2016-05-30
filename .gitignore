@@ -20,3 +20,5 @@ membersrvc/membersrvc
 # Makefile dummy artifacts
 .*-dummy
 devenv/node_modules/
+# go-carpet output files
+go-carpet-coverage*
