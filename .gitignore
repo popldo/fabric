@@ -19,3 +19,4 @@ membersrvc/membersrvc
 *.log
 # Makefile dummy artifacts
 .*-dummy
+devenv/node_modules/
