@@ -38,10 +38,10 @@ import (
 
 	core "github.com/hyperledger/fabric/core"
 	"github.com/hyperledger/fabric/core/chaincode"
+	"github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/core/crypto"
-	"github.com/hyperledger/fabric/core/crypto/utils"
-	"github.com/hyperledger/fabric/core/peer"
 	pb "github.com/hyperledger/fabric/protos"
+	"github.com/hyperledger/fabric/core/crypto/primitives"
 )
 
 var restLogger = logging.MustGetLogger("rest")
@@ -427,7 +427,7 @@ func (s *ServerOpenchainREST) GetEnrollmentCert(rw web.ResponseWriter, req *web.
 		}
 
 		// Transforms the DER encoded certificate to a PEM encoded certificate
-		certPEM := utils.DERCertToPEM(certDER)
+		certPEM := primitives.DERCertToPEM(certDER)
 
 		// As the enrollment certificate contains \n characters, url encode it before outputting
 		urlEncodedCert := url.QueryEscape(string(certPEM))
@@ -549,7 +549,7 @@ func (s *ServerOpenchainREST) GetTransactionCert(rw web.ResponseWriter, req *web
 			}
 
 			// Transforms the DER encoded certificate to a PEM encoded certificate
-			certPEM := utils.DERCertToPEM(certDER)
+			certPEM := primitives.DERCertToPEM(certDER)
 
 			// As the transaction certificate contains \n characters, url encode it before outputting
 			urlEncodedCert := url.QueryEscape(string(certPEM))
@@ -1708,7 +1708,7 @@ func (s *ServerOpenchainREST) NotFound(rw web.ResponseWriter, r *web.Request) {
 // middleware and routes.
 func StartOpenchainRESTServer(server *ServerOpenchain, devops *core.Devops) {
 	// Initialize the REST service object
-	restLogger.Info("Initializing the REST service on %s, TLS is %s.", viper.GetString("rest.address"), (map[bool]string{true: "enabled", false: "disabled"})[peer.TlsEnabled()])
+	restLogger.Info("Initializing the REST service on %s, TLS is %s.", viper.GetString("rest.address"), (map[bool]string{true: "enabled", false: "disabled"})[comm.TLSEnabled()])
 	router := web.New(ServerOpenchainREST{})
 
 	// Record the pointer to the underlying ServerOpenchain and Devops objects.
@@ -1745,7 +1745,7 @@ func StartOpenchainRESTServer(server *ServerOpenchain, devops *core.Devops) {
 	router.NotFound((*ServerOpenchainREST).NotFound)
 
 	// Start server
-	if peer.TlsEnabled() {
+	if comm.TLSEnabled() {
 		err := http.ListenAndServeTLS(viper.GetString("rest.address"), viper.GetString("peer.tls.cert.file"), viper.GetString("peer.tls.key.file"), router)
 		if err != nil {
 			restLogger.Error(fmt.Sprintf("ListenAndServeTLS: %s", err))
