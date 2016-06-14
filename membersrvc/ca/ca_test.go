@@ -21,6 +21,8 @@ import (
 	"os"
 	"testing"
 
+	"database/sql"
+
 	"github.com/hyperledger/fabric/core/crypto"
 	"github.com/hyperledger/fabric/core/crypto/primitives"
 )
@@ -45,7 +47,7 @@ func TestNewCA(t *testing.T) {
 	LogInit(os.Stdout, os.Stdout, os.Stdout, os.Stderr, os.Stdout)
 
 	//Create new CA
-	ca := NewCA(name)
+	ca := NewCA(name, initializeTables)
 	if ca == nil {
 		t.Error("could not create new CA")
 	}
@@ -87,15 +89,9 @@ func TestNewCA(t *testing.T) {
 			cacert.Subject.Country, country)
 	}
 
-	//cleanup
-	err = cleanupFiles(ca.path)
-	if err != nil {
-		t.Logf("Failed removing [%s] [%s]\n", ca.path, err)
-	}
-
 }
 
-//cleanup files between and after tests
-func cleanupFiles(path string) error {
-	return os.RemoveAll(path)
+// Empty initializer for CA
+func initializeTables(db *sql.DB) error {
+	return nil
 }

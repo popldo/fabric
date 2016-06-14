@@ -184,7 +184,7 @@ func deploy(admCert crypto.CertificateHandler) error {
 
 	ledger, err := ledger.GetLedger()
 	ledger.BeginTxBatch("1")
-	_, err = chaincode.Execute(ctx, chaincode.GetChain(chaincode.DefaultChain), transaction)
+	_, _, err = chaincode.Execute(ctx, chaincode.GetChain(chaincode.DefaultChain), transaction)
 	if err != nil {
 		return fmt.Errorf("Error deploying chaincode: %s", err)
 	}
@@ -243,7 +243,7 @@ func assignOwnership(admCert crypto.CertificateHandler, asset string, newOwnerCe
 
 	ledger, err := ledger.GetLedger()
 	ledger.BeginTxBatch("1")
-	_, err = chaincode.Execute(ctx, chaincode.GetChain(chaincode.DefaultChain), transaction)
+	_, _, err = chaincode.Execute(ctx, chaincode.GetChain(chaincode.DefaultChain), transaction)
 	if err != nil {
 		return fmt.Errorf("Error deploying chaincode: %s", err)
 	}
@@ -303,7 +303,7 @@ func transferOwnership(owner crypto.Client, ownerCert crypto.CertificateHandler,
 
 	ledger, err := ledger.GetLedger()
 	ledger.BeginTxBatch("1")
-	_, err = chaincode.Execute(ctx, chaincode.GetChain(chaincode.DefaultChain), transaction)
+	_, _, err = chaincode.Execute(ctx, chaincode.GetChain(chaincode.DefaultChain), transaction)
 	if err != nil {
 		return fmt.Errorf("Error deploying chaincode: %s", err)
 	}
@@ -337,7 +337,7 @@ func whoIsTheOwner(asset string) ([]byte, error) {
 
 	ledger, err := ledger.GetLedger()
 	ledger.BeginTxBatch("1")
-	result, err := chaincode.Execute(ctx, chaincode.GetChain(chaincode.DefaultChain), transaction)
+	result, _, err := chaincode.Execute(ctx, chaincode.GetChain(chaincode.DefaultChain), transaction)
 	if err != nil {
 		return nil, fmt.Errorf("Error deploying chaincode: %s", err)
 	}
@@ -450,21 +450,21 @@ func initVP() {
 		var err error
 
 		if viper.GetBool("peer.validator.enabled") {
-			testLogger.Debug("Registering validator with enroll ID: %s", enrollID)
+			testLogger.Debugf("Registering validator with enroll ID: %s", enrollID)
 			if err = crypto.RegisterValidator(enrollID, nil, enrollID, enrollSecret); nil != err {
 				panic(err)
 			}
-			testLogger.Debug("Initializing validator with enroll ID: %s", enrollID)
+			testLogger.Debugf("Initializing validator with enroll ID: %s", enrollID)
 			secHelper, err = crypto.InitValidator(enrollID, nil)
 			if nil != err {
 				panic(err)
 			}
 		} else {
-			testLogger.Debug("Registering non-validator with enroll ID: %s", enrollID)
+			testLogger.Debugf("Registering non-validator with enroll ID: %s", enrollID)
 			if err = crypto.RegisterPeer(enrollID, nil, enrollID, enrollSecret); nil != err {
 				panic(err)
 			}
-			testLogger.Debug("Initializing non-validator with enroll ID: %s", enrollID)
+			testLogger.Debugf("Initializing non-validator with enroll ID: %s", enrollID)
 			secHelper, err = crypto.InitPeer(enrollID, nil)
 			if nil != err {
 				panic(err)
