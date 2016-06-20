@@ -19,6 +19,8 @@ package ca
 import (
 	"encoding/asn1"
 	"errors"
+	"fmt"
+	"google/protobuf"
 	"math/big"
 	"strings"
 	"time"
@@ -36,8 +38,6 @@ import (
 
 	"github.com/hyperledger/fabric/core/crypto/primitives"
 	pb "github.com/hyperledger/fabric/membersrvc/protos"
-
-	"google/protobuf"
 )
 
 var (
@@ -256,8 +256,6 @@ func (aca *ACA) fetchAttributes(id, affiliation string) ([]*AttributePair, error
 	var attributes = make([]*AttributePair, 0)
 	attrs := viper.GetStringMapString("aca.attributes")
 
-	var attrOwner *AttributeOwner
-
 	for _, flds := range attrs {
 		vals := strings.Fields(flds)
 		if len(vals) >= 1 {
@@ -267,15 +265,12 @@ func (aca *ACA) fetchAttributes(id, affiliation string) ([]*AttributePair, error
 			}
 			attributeVals := strings.Split(val, ";")
 			if len(attributeVals) >= 6 {
-				attrPair, err := NewAttributePair(attributeVals, attrOwner)
+				attrPair, err := NewAttributePair(attributeVals, nil)
 				if err != nil {
 					return nil, errors.New("Invalid attribute entry " + val + " " + err.Error())
 				}
 				if attrPair.GetID() != id || attrPair.GetAffiliation() != affiliation {
 					continue
-				}
-				if attrOwner == nil {
-					attrOwner = attrPair.GetOwner()
 				}
 				attributes = append(attributes, attrPair)
 			} else {
@@ -283,10 +278,16 @@ func (aca *ACA) fetchAttributes(id, affiliation string) ([]*AttributePair, error
 			}
 		}
 	}
+
+	fmt.Printf("%v %v", id, attributes)
+
 	return attributes, nil
 }
 
 func (aca *ACA) populateAttributes(attrs []*AttributePair) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	tx, dberr := aca.db.Begin()
 	if dberr != nil {
 		return dberr
@@ -308,6 +309,8 @@ func (aca *ACA) populateAttributes(attrs []*AttributePair) error {
 }
 
 func (aca *ACA) populateAttribute(tx *sql.Tx, attr *AttributePair) error {
+	fmt.Printf("*********************** ATTR %v %v %v\n", attr.GetID(), attr.attributeName, string(attr.attributeValue))
+
 	var count int
 	err := tx.QueryRow("SELECT count(row) AS cant FROM Attributes WHERE id=? AND affiliation =? AND attributeName =?",
 		attr.GetID(), attr.GetAffiliation(), attr.GetAttributeName()).Scan(&count)
@@ -441,9 +444,23 @@ func (acap *ACAP) createRequestAttributeResponse(status pb.ACAAttrResp_StatusCod
 func (acap *ACAP) RequestAttributes(ctx context.Context, in *pb.ACAAttrReq) (*pb.ACAAttrResp, error) {
 	Trace.Println("grpc ACAP:RequestAttributes")
 
-	if in.Ts == nil || in.Id == nil || in.ECert == nil || in.Signature == nil ||
-		in.Attributes == nil || len(in.Attributes) == 0 {
-		return acap.createRequestAttributeResponse(pb.ACAAttrResp_BAD_REQUEST, nil), nil
+	fail := pb.ACAAttrResp_FULL_SUCCESSFUL // else explicit which-param-failed error
+	if nil == in.Ts {
+		fail = pb.ACAAttrResp_FAIL_NIL_TS
+	} else if nil == in.Id {
+		fail = pb.ACAAttrResp_FAIL_NIL_ID
+	} else if nil == in.ECert {
+		fail = pb.ACAAttrResp_FAIL_NIL_ECERT
+	} else if nil == in.Signature {
+		fail = pb.ACAAttrResp_FAIL_NIL_SIGNATURE
+	}
+
+	if pb.ACAAttrResp_FULL_SUCCESSFUL != fail {
+		return acap.createRequestAttributeResponse(fail, nil), nil
+	}
+
+	if in.Attributes == nil {
+		in.Attributes = []*pb.TCertAttribute{}
 	}
 
 	attrs := make(map[string]bool)
