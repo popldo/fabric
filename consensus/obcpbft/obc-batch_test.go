@@ -94,7 +94,7 @@ func TestClearOustandingReqsOnStateRecovery(t *testing.T) {
 
 	b.manager.Queue() <- nil
 
-	if len(*(b.reqStore.outstandingRequests)) != 0 {
+	if b.reqStore.outstandingRequests.Len() != 0 {
 		t.Fatalf("Should not have any requests outstanding after completing state transfer")
 	}
 }
@@ -133,15 +133,9 @@ func TestOutstandingReqsIngestion(t *testing.T) {
 
 	for i, b := range bs {
 		b.manager.Queue() <- nil
-		count := len(*(b.reqStore.outstandingRequests))
-		if i == 0 {
-			if count != 0 {
-				t.Errorf("Batch primary should not have the request in its store: %v", b.reqStore.outstandingRequests)
-			}
-		} else {
-			if count != 1 {
-				t.Errorf("Batch backup %d should have the request in its store", i)
-			}
+		count := b.reqStore.outstandingRequests.Len()
+		if count != 1 {
+			t.Errorf("Batch backup %d should have the request in its store", i)
 		}
 	}
 }
@@ -190,10 +184,12 @@ func TestOutstandingReqsResubmission(t *testing.T) {
 		}
 	}
 
+	tmp := uint64(1)
+	b.pbft.currentExec = &tmp
 	events.SendEvent(b, committedEvent{})
 	execute()
 
-	if len(*(b.reqStore.outstandingRequests)) != 0 {
+	if b.reqStore.outstandingRequests.Len() != 0 {
 		t.Fatalf("All requests should have been executed and deleted after exec")
 	}
 
@@ -260,5 +256,116 @@ func TestViewChangeOnPrimarySilence(t *testing.T) {
 
 	if b.pbft.activeView {
 		t.Fatalf("Should have caused a view change")
+	}
+}
+
+func obcBatchSizeOneHelper(id uint64, config *viper.Viper, stack consensus.Stack) pbftConsumer {
+	// It's not entirely obvious why the compiler likes the parent function, but not newObcClassic directly
+	config.Set("general.batchsize", 1)
+	return newObcBatch(id, config, stack)
+}
+
+func TestClassicStateTransfer(t *testing.T) {
+	validatorCount := 4
+	net := makeConsumerNetwork(validatorCount, obcBatchSizeOneHelper, func(ce *consumerEndpoint) {
+		ce.consumer.(*obcBatch).pbft.K = 2
+		ce.consumer.(*obcBatch).pbft.L = 4
+	})
+	defer net.stop()
+	// net.debug = true
+
+	filterMsg := true
+	net.filterFn = func(src int, dst int, msg []byte) []byte {
+		if filterMsg && dst == 3 { // 3 is byz
+			return nil
+		}
+		return msg
+	}
+
+	// Advance the network one seqNo past so that Replica 3 will have to do statetransfer
+	broadcaster := net.endpoints[generateBroadcaster(validatorCount)].getHandle()
+	net.endpoints[1].(*consumerEndpoint).consumer.RecvMsg(createOcMsgWithChainTx(1), broadcaster)
+	net.process()
+
+	// Move the seqNo to 9, at seqNo 6, Replica 3 will realize it's behind, transfer to seqNo 8, then execute seqNo 9
+	filterMsg = false
+	for n := 2; n <= 9; n++ {
+		net.endpoints[1].(*consumerEndpoint).consumer.RecvMsg(createOcMsgWithChainTx(int64(n)), broadcaster)
+	}
+
+	net.process()
+
+	for _, ep := range net.endpoints {
+		ce := ep.(*consumerEndpoint)
+		obc := ce.consumer.(*obcBatch)
+		_, err := obc.stack.GetBlock(9)
+		if nil != err {
+			t.Errorf("Replica %d executed requests, expected a new block on the chain, but could not retrieve it : %s", ce.id, err)
+		}
+		if !obc.pbft.activeView || obc.pbft.view != 0 {
+			t.Errorf("Replica %d not active in view 0, is %v %d", ce.id, obc.pbft.activeView, obc.pbft.view)
+		}
+	}
+}
+
+func TestClassicBackToBackStateTransfer(t *testing.T) {
+	validatorCount := 4
+	net := makeConsumerNetwork(validatorCount, obcBatchSizeOneHelper, func(ce *consumerEndpoint) {
+		ce.consumer.(*obcBatch).pbft.K = 2
+		ce.consumer.(*obcBatch).pbft.L = 4
+		ce.consumer.(*obcBatch).pbft.requestTimeout = time.Hour // We do not want any view changes
+	})
+	defer net.stop()
+	// net.debug = true
+
+	filterMsg := true
+	net.filterFn = func(src int, dst int, msg []byte) []byte {
+		if filterMsg && dst == 3 { // 3 is byz
+			return nil
+		}
+		return msg
+	}
+
+	// Get the group to advance past seqNo 1, leaving Replica 3 behind
+	broadcaster := net.endpoints[generateBroadcaster(validatorCount)].getHandle()
+	net.endpoints[1].(*consumerEndpoint).consumer.RecvMsg(createOcMsgWithChainTx(1), broadcaster)
+	net.process()
+
+	// Now start including Replica 3, go to sequence number 10, Replica 3 will trigger state transfer
+	// after seeing seqNo 8, then pass another target for seqNo 10 and 12, but transfer to 8, but the network
+	// will have already moved on and be past to seqNo 13, outside of Replica 3's watermarks, but
+	// Replica 3 will execute through seqNo 12
+	filterMsg = false
+	for n := 2; n <= 21; n++ {
+		net.endpoints[1].(*consumerEndpoint).consumer.RecvMsg(createOcMsgWithChainTx(int64(n)), broadcaster)
+	}
+
+	net.process()
+
+	for _, ep := range net.endpoints {
+		ce := ep.(*consumerEndpoint)
+		obc := ce.consumer.(*obcBatch)
+		_, err := obc.stack.GetBlock(21)
+		if nil != err {
+			t.Errorf("Replica %d executed requests, expected a new block on the chain, but could not retrieve it : %s", ce.id, err)
+		}
+		if !obc.pbft.activeView || obc.pbft.view != 0 {
+			t.Errorf("Replica %d not active in view 0, is %v %d", ce.id, obc.pbft.activeView, obc.pbft.view)
+		}
+	}
+}
+
+func TestClearBatchStoreOnViewChange(t *testing.T) {
+	b := newObcBatch(1, loadConfig(), &omniProto{})
+	defer b.Close()
+
+	b.batchStore = []*Request{&Request{}}
+
+	// Send a request, which will be ignored, triggering view change
+	b.manager.Queue() <- viewChangedEvent{}
+	b.manager.Queue() <- nil
+
+	if len(b.batchStore) != 0 {
+		t.Fatalf("Should have cleared the batch store on view change")
 	}
 }
