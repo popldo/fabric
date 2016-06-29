@@ -16,12 +16,12 @@ tags
 .#*
 # bddtest log files
 *.log
+# bddtest coverage files
+bddtests/coverage
+*.cov
 # Makefile dummy artifacts
 .*-dummy
-devenv/node_modules/
 # go-carpet output files
 go-carpet-coverage*
 # make node-sdk copied files
 sdk/node/lib/protos/*
-peer/peer
-membersrvc/membersrvc
