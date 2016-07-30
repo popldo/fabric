@@ -18,7 +18,7 @@
  * © Copyright IBM Corp. 2016
  */
 
-var hlc = require('../..');
+var hfc = require('../..');
 var test = require('tape');
 var util = require('util');
 var fs = require('fs');
@@ -31,8 +31,13 @@ var keyValStorePath2 = keyValStorePath + "2";
 //
 test('registrar test', function (t) {
     registrarTest(function(err) {
-        if (err) fail(t, "registrarTest", err);
-        else pass(t, "registrarTest");
+        if (err) {
+          fail(t, "registrarTest", err);
+          // Exit the test script after a failure
+          process.exit(1);
+        } else {
+          pass(t, "registrarTest");
+        }
     });
 });
 
@@ -41,8 +46,13 @@ test('registrar test', function (t) {
 //
 test('enroll again', function (t) {
     enrollAgain(function(err) {
-        if (err) fail(t, "enrollAgain", err);
-        else pass(t, "enrollAgain");
+        if (err) {
+          fail(t, "enrollAgain", err);
+          // Exit the test script after a failure
+          process.exit(1);
+        } else {
+          pass(t, "enrollAgain");
+        }
     });
 });
 
@@ -52,11 +62,11 @@ function registrarTest(cb) {
    //
    // Create and configure the test chain
    //
-   var chain = hlc.newChain("testChain");
+   var chain = hfc.newChain("testChain");
    var expect="";
    var found="";
 
-   chain.setKeyValStore(hlc.newFileKeyValStore(keyValStorePath));
+   chain.setKeyValStore(hfc.newFileKeyValStore(keyValStorePath));
    chain.setMemberServicesUrl("grpc://localhost:50051");
    chain.enroll("admin", "Xurw3yU9zI0l", function (err, admin) {
       if (err) return cb(err);
@@ -99,8 +109,7 @@ function registerAndEnroll(name, r, registrar, chain, cb) {
     var registrationRequest = {
          roles: [ r ],
          enrollmentID: name,
-         account: "bank_a",
-         affiliation: "00001",
+         affiliation: "bank_a",
          registrar: registrar
     };
     chain.registerAndEnroll(registrationRequest,cb);
@@ -116,8 +125,8 @@ function enrollAgain(cb) {
    // This is necessary to start without a local cache.
    //
    fs.renameSync(keyValStorePath,keyValStorePath2);
-   var chain = hlc.newChain("testChain2");
-   chain.setKeyValStore(hlc.newFileKeyValStore('/tmp/keyValStore'));
+   var chain = hfc.newChain("testChain2");
+   chain.setKeyValStore(hfc.newFileKeyValStore('/tmp/keyValStore'));
    chain.setMemberServicesUrl("grpc://localhost:50051");
    chain.enroll("admin", "Xurw3yU9zI0l", function (err, admin) {
       rmdir(keyValStorePath);
@@ -147,6 +156,6 @@ function pass(t, msg) {
 }
 
 function fail(t, msg, err) {
-    t.pass("Failure: [" + msg + "]: [" + err + "]");
+    t.fail("Failure: [" + msg + "]: [" + err + "]");
     t.end(err);
 }
